@@ -88,6 +88,10 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
         )
     return credentials.credentials
   
+@app.get("/")
+def root():
+    return {"message": "Hello from Railway!"}
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(
