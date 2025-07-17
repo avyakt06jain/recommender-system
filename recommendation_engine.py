@@ -23,42 +23,37 @@ class RecommendationEngine:
 
         target_user_vector = None
         for user in all_user_vector_data:
-            if user['id'] == target_user_id:
+            if user.user_id == target_user_id:
                 target_user_vector = user
                 break
 
         if not target_user_vector:
             return []
         
-
-        # recommended_history = self.get_recommendations_history(target_user_id, supabase_client)
-
-        # liked_users = self.get_liked_users(target_user_id, supabase_client)
-
         similar_users = []
-        target_vector = target_user_vector.get('vector')
-        target_gender = target_user_vector.get('gender')
+        target_vector = target_user_vector.vector
+        target_gender = target_user_vector.gender
 
         for user in all_user_vector_data:
-            if user['id'] == target_user_id:
+            if user.user_id == target_user_id:
                 continue
 
-            if user['id'] in liked_users:
+            if user.user_id in liked_users:
                 continue
 
-            user_gender = user.get('gender')
+            user_gender = user.gender
             is_opposite_gender = ((target_gender == 'male' and user_gender == 'female') or (target_gender == 'female' and user_gender == 'male'))
 
-            user_vector = user.get('vector')
+            user_vector = user.vector
             similarity = self.calculate_similarity(target_vector, user_vector)
 
             if is_opposite_gender:
                 similarity += 0.1
 
             similar_users.append({
-                'user_id': user['id'],
+                'user_id': user.user_id,
                 'similarity': similarity,
-                'recommendation_count': recommendation_history.get(user['id'], 0)
+                'recommendation_count': recommendation_history.get(user.user_id, 0)
             })
 
         similar_users.sort(key=lambda x: (x['recommendation_count'], - x['similarity']))
@@ -68,7 +63,10 @@ class RecommendationEngine:
         recs = dict()
 
         for rec in recommendations:
-            recs[rec['user_id']] = int(self.calculate_similarity(rec['user_id'], target_user_id))
+            user_vector = next((user.vector for user in all_user_vector_data if user.user_id == rec['user_id']), None)
+            if user_vector is not None:
+                similarity_score = self.calculate_similarity(target_vector, user_vector)
+                recs[rec['user_id']] = round(similarity_score, 2)*100
 
         return recs
     

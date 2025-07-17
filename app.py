@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, Request, HTTPException, Depends, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import os
+from dotenv import load_dotenv
 from datetime import datetime
 from feature_processor import FeatureProcessor
 from recommendation_engine import RecommendationEngine
@@ -25,11 +27,12 @@ app.add_middleware(
     allow_headers = ["*"],
 )
 
+load_dotenv()
+
 API_KEY = os.getenv("API_KEY")
 
 if not API_KEY:
     raise ValueError("Missing API KEY")
-
 
 feature_processing = FeatureProcessor()
 recommendation_engine = RecommendationEngine(feature_processing)
@@ -41,9 +44,9 @@ class UserData(BaseModel):
     campusVibeTags: List[str] = Field(..., description="Campus vibe tags")
     hangoutSpot: str = Field(..., description="Preferred hangout spot")
     preferences: str = Field(..., description="User preferences")
-    prompts_1: str = Field(..., description="First prompt response")
-    prompts_2: str = Field(..., description="Second prompt response")
-    prompts_3: str = Field(..., description="Third prompt response")
+    funPrompt1: str = Field(..., description="First prompt response")
+    funPrompt2: str = Field(..., description="Second prompt response")
+    funPrompt3: str = Field(..., description="Third prompt response")
     
     name: Optional[str] = None
     bio: Optional[str] = None
@@ -56,17 +59,17 @@ class UserData(BaseModel):
 class UpdateUserVectorRequest(BaseModel):
     user_data: UserData = Field(..., description="User data for vector creation")
 
-class GetRecommendationsRequest(BaseModel):
-    target_user_id: str = Field(..., description="ID of the target user")
-    all_users_vector_data: List[UserData] = Field(..., description="List of all users vector data")
-    recommendation_history: Dict[str, int] = Field(..., description="Dictionary of all recommended users")
-    liked_users: List[int] = Field(..., description="List of all liked users")
-    n_recommendations: int = Field(10, ge=1, le=100, description="Number of recommendations")
-
 class UserVectorResponse(BaseModel):
     user_id: str
     gender: str
-    vector: List[int]
+    vector: List[float]
+
+class GetRecommendationsRequest(BaseModel):
+    target_user_id: str = Field(..., description="ID of the target user")
+    all_users_vector_data: List[UserVectorResponse] = Field(..., description="List of all users vector data")
+    recommendation_history: Dict[str, int] = Field(..., description="Dictionary of all recommended users")
+    liked_users: List[str] = Field(..., description="List of all liked users")
+    n_recommendations: int = Field(10, ge=1, le=100, description="Number of recommendations")
 
 class RecommendationsResponse(BaseModel):
     target_user_id: str
@@ -108,11 +111,11 @@ async def convert_to_user_vector(
     try:
         user_data = request.user_data
 
-        user_vector = feature_processing.create_user_vector(user_data)
+        user_vector = feature_processing.create_user_vector(user_data.model_dump())
         
         return UserVectorResponse(
-            user_id=user_data['id'],
-            gender=user_data['gender'],
+            user_id=user_data.user_id,
+            gender=user_data.gender,
             vector=user_vector
         )
         
@@ -121,7 +124,7 @@ async def convert_to_user_vector(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail=str(e)
         )
     
 @app.post("/get_recommendations", response_model=RecommendationsResponse)
@@ -147,7 +150,7 @@ async def get_recommendations(
         
         return RecommendationsResponse(
             target_user_id=request.target_user_id,
-            recommended_user_ids=list(recommendations.keys()),
+            recommendations=list(recommendations.keys()),
             similarity_scores=list(recommendations.values()),
             count=len(recommendations)
         )
@@ -157,15 +160,22 @@ async def get_recommendations(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail=str(e)
         )
     
+# @app.exception_handler(HTTPException)
+# async def http_exception_handler(request, exc):
+#     return {
+#         "error": exc.detail,
+#         "status_code": exc.status_code
+#     }
+
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    return {
-        "error": exc.detail,
-        "status_code": exc.status_code
-    }
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
