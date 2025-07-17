@@ -1,11 +1,10 @@
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import normalize
 
 class FeatureProcessor:
     def __init__(self):
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.scaler = StandardScaler()
 
     def process_categorical_features(self, user_data):
         features = []
@@ -51,5 +50,9 @@ class FeatureProcessor:
 
         sentence_embeddings = self.model.encode(prompts_list)
         vector = np.mean(sentence_embeddings, axis=0)
+
+        vector_normalized = normalize(vector.reshape(1,-1), norm='l2')
+
+        vector = vector_normalized.flatten()
 
         return vector

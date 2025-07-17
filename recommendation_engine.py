@@ -1,10 +1,9 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from datetime import timedelta
 
 class RecommendationEngine:
-    def __init__(self, FeatureProcessor):
-        self.feature_processing = FeatureProcessor
+    def __init__(self, feature_processor):
+        self.feature_processing = feature_processor
 
     def calculate_similarity(self, user1_vector, user2_vector):
         vec1 = np.array(user1_vector).reshape(1,-1)
@@ -14,24 +13,31 @@ class RecommendationEngine:
 
         return similarity
     
-    def get_recommendations(self, target_user_id, all_user_vector_data, supabase_client, n_recommendations=10):
-        target_user = None
+    def get_recommendations(self, target_user_id, all_user_vector_data, recommendation_history, liked_users, n_recommendations=10):
+        '''
+        target_user_id : str
+        all_user_vector_data : list(dict('id':str, 'gender':str, 'vector':1Darray))
+        recommendation_history : dict(<recommend_user_id(str)> : <number(int)>)
+        liked_users : list(str)
+        '''
+
+        target_user_vector = None
         for user in all_user_vector_data:
             if user['id'] == target_user_id:
-                target_user = user
+                target_user_vector = user
                 break
 
-        if not target_user:
+        if not target_user_vector:
             return []
         
 
-        recommended_history = self.get_recommendations_history(target_user_id, supabase_client)
+        # recommended_history = self.get_recommendations_history(target_user_id, supabase_client)
 
-        liked_users = self.get_liked_users(target_user_id, supabase_client)
+        # liked_users = self.get_liked_users(target_user_id, supabase_client)
 
-        similarities = []
-        target_vector = target_user.get('vector')
-        target_gender = target_user.get('gender')
+        similar_users = []
+        target_vector = target_user_vector.get('vector')
+        target_gender = target_user_vector.get('gender')
 
         for user in all_user_vector_data:
             if user['id'] == target_user_id:
@@ -49,56 +55,24 @@ class RecommendationEngine:
             if is_opposite_gender:
                 similarity += 0.1
 
-            similarities.append({
+            similar_users.append({
                 'user_id': user['id'],
                 'similarity': similarity,
-                'recommendation_count': recommended_history.get(user['id'], 0)
+                'recommendation_count': recommendation_history.get(user['id'], 0)
             })
 
-        similarities.sort(key=lambda x: (x['recommendation_count'], - x['similarity']))
+        similar_users.sort(key=lambda x: (x['recommendation_count'], - x['similarity']))
 
-        recommendations = similarities[:n_recommendations]
+        recommendations = similar_users[:n_recommendations]
 
-        self.update_recommendation_history(target_user_id, recommendations, supabase_client)
-
-        recs = []
+        recs = dict()
 
         for rec in recommendations:
-            recs.append({'user_id': rec['user_id'], 'similarity_score': int(self.calculate_similarity(rec['user_id'], target_user_id))})
+            recs[rec['user_id']] = int(self.calculate_similarity(rec['user_id'], target_user_id))
 
         return recs
     
-    def get_recommendation_history(self, target_user_id, supabase_client):
-        result = supabase_client.table('recommendation_history')\
-            .select('recommended_user_id')\
-                .eq('target_user_id', target_user_id)\
-                    .execute()
-
-        history = {}
-        for record in result.data:
-            user_id = record['recommended_user_id']
-            history[user_id] = history.get(user_id, 0) + 1
-
-        return history
-    
-    def get_liked_users(self, target_user_id, supabase_client):
-        result = supabase_client.table('Like')\
-        .select('likedUserId')\
-        .eq('likerUserId', target_user_id)\
-        .execute()
-
-        return [record['likedUserId'] for record in result.data]
-    
-    def update_recommendation_history(self, target_user_id, recommendations, supabase_client):
-        records = []
-
-        for rec in recommendations:
-            records.append({
-                'target_user_id': target_user_id,
-                'recommended_user_id': rec['user_id']
-            })
-
-        if records:
-            supabase_client.table('recommendation_history')\
-            .insert(records)\
-            .execute()
+        '''
+        Update recommendation_history table after this
+        Add 1 to each user_id that is recommended in table
+        '''
