@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python310", "pip", "git"]
+nixPkgs = ["python310", "python310Packages.pip", "git"]
 
 [phases.install]
 cmds = ["python -m pip install --break-system-packages -r requirements.txt"]
